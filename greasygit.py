@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-from urllib.request import urlopen
 from urllib.parse import unquote
 from collections import namedtuple
 import re
 import subprocess
 import os
-import shlex
 
+import requests
 
-def get(url, data=None):
-    with urlopen(url, data) as r:
-        return r.read().decode("utf-8")
+def get(url):
+    return requests.get(url).text
 
 
 README_TEMPLATE = """\
@@ -39,8 +37,9 @@ class GreasyForkScript:
             version=(?P<number>\d+)\">(?P<tag>[^<\"]+)</a> # version number
             .+?datetime=\"(?P<datetime>[^\"]+) # datetime
             \".+?
-            (version-changelog\">\s*
-            (?P<message>[^<]+)\s*</\w+>)? # message
+            (version-changelog\">\s*(<p>\s*)?
+            (?P<message>[^<]+) # message
+            \s*(</p>\s*)?</\w+>)?
         \s+</li>
     """
 
@@ -85,7 +84,6 @@ class GreasyForkScript:
 
 
 def execute_command(command, *args, **kwargs):
-    kwargs["shell"] = True
     return subprocess.check_call(command, *args, **kwargs)
 
 
@@ -98,31 +96,31 @@ class GitRepo:
     def __init__(self, repo_name=None):
         self.path = (repo_name or ".") + "/"
         if repo_name:
-            execute_command(f"git init {repo_name}")
+            execute_command(["git", "init", repo_name])
 
     def update_and_add(self, file_path, content):
         write_file(self.path + file_path, content)
         self.add(file_path)
 
     def add(self, file_path):
-        return execute_command(f"git add {file_path}", cwd=self.path)
+        return execute_command(["git", "add", file_path], cwd=self.path)
 
     def commit(self, message, datetime=None, allowing_empty=False):
         envs = None
         if datetime:
             envs = os.environ.copy()
             envs.update({"GIT_AUTHOR_DATE": datetime, "GIT_COMMITTER_DATE": datetime})
-        command = f"git commit -m {shlex.quote(message)} --allow-empty-message"
+        command = ["git", "commit", "-m", message or "", "--allow-empty-message"]
         if allowing_empty:
-            command += " --allow-empty"
+            command.append("--allow-empty")
         execute_command(command, cwd=self.path, env=envs)
 
     def tag(self, name, message=None, annotated=False):
-        command = f"git tag {name}"
+        command = ["git", "tag", name]
         if message:
-            command += f" -m {shlex.quote(message)}"
+            command.extend(["-m", message])
         if annotated:
-            command += " -a"
+            command.append("-a")
         execute_command(command, cwd=self.path)
 
 
